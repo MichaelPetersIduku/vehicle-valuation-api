@@ -1,13 +1,9 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo_text.svg" width="320" alt="Nest Logo" /></a>
-</p>
-
 [circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
 [circleci-url]: https://circleci.com/gh/nestjs/nest
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+A NestJS API for Vehicle Valuation Application
 
 ## Prerequisite
 
@@ -43,7 +39,7 @@
 
 ## Database configuration
 
-1. In the root of the API project, edit the file `.env` and configure these parameters using your Postgres configuration.
+1. In the root of the API project, edit the file `.env` and configure these parameters using your Postgres configuration. On production use the below POSTGRES config, however this project runs using sqlite3 inmemory database
 
    ```
    POSTGRES_NAME=template
@@ -73,7 +69,7 @@ $ npm run start:prod
 
 ```bash
 # e2e tests
-$ npm run test:e2e
+$ npm run test
 
 ```
 
@@ -102,9 +98,9 @@ $ npm run migration:run
 ## Documentation
 
 This template uses swagger for documentation.
-To see swagger, if you are using port 8080 for the api, it would be for example => localhost:8080/docs
+To see swagger, if you are using port 3000 for the api, it would be for example => localhost:3000/docs
 
-![imagen](https://user-images.githubusercontent.com/56872592/162640131-e28b39fc-a778-4718-b5aa-93fa62ec1daf.png)
+![imagen](https://res.cloudinary.com/dbezwd2bu/image/upload/v1770390890/Screenshot_2026-02-06_at_4.13.08_PM_lsnppk.png)
 
 ## Endpoint security
 
