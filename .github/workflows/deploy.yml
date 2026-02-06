@@ -137,7 +137,7 @@ jobs:
             });
 
       - name: Run smoke tests
-        run: npm run test:e2e --if-present
+        run: npm run test --if-present
         env:
           API_URL: ${{ steps.deploy-output.outputs.api-endpoint }}
           NODE_ENV: test

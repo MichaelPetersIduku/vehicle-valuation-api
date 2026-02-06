@@ -47,8 +47,8 @@ jobs:
       - name: Run linter
         run: npm run lint --if-present
 
-      - name: Run e2e tests
-        run: npm run test:e2e --if-present
+      - name: Run tests
+        run: npm run test --if-present
         env:
           DB_HOST: localhost
           DB_PORT: 5432
