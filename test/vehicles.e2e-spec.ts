@@ -4,16 +4,36 @@ import * as request from 'supertest';
 import { Connection } from 'typeorm';
 import { AppModule } from './../src/app.module';
 import { userAdmin } from './utils';
+import { RapidApiService } from '../src/common/services/rapid-api.service';
+
+const mockRapidApiService = {
+  getVehicleData: async (vin: string) => ({
+    vin,
+    make: 'Honda',
+    model: 'Civic',
+    year: 2020,
+    mileage_adjustment: 0,
+    mileage: 30000,
+    trim: 'EX',
+    weight: 3000,
+    loan_value: 10000,
+    adjusted_trade_in_value: 9000,
+    average_trade_in: 9500,
+  }),
+};
 
 describe('Vehicles (e2e)', () => {
   let app: INestApplication;
   let adminJwtToken: string;
-  const testVin = '5FRYD4H66GB592800';
+  const testVin = '1HGBH41JXMN109186';
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(RapidApiService)
+      .useValue(mockRapidApiService)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(

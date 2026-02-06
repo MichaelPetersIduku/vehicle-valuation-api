@@ -4,6 +4,23 @@ import * as request from 'supertest';
 import { Connection } from 'typeorm';
 import { AppModule } from './../src/app.module';
 import { userAdmin, userCustomer } from './utils';
+import { RapidApiService } from '../src/common/services/rapid-api.service';
+
+const mockRapidApiService = {
+  getVehicleData: async (vin: string) => ({
+    vin,
+    make: 'Toyota',
+    model: 'Corolla',
+    year: 2019,
+    mileage_adjustment: 0,
+    mileage: 25000,
+    trim: 'LE',
+    weight: 2800,
+    loan_value: 12000,
+    adjusted_trade_in_value: 11000,
+    average_trade_in: 11500,
+  }),
+};
 
 describe('Loans (e2e)', () => {
   jest.setTimeout(20000);
@@ -16,7 +33,10 @@ describe('Loans (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(RapidApiService)
+      .useValue(mockRapidApiService)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
@@ -88,7 +108,7 @@ describe('Loans (e2e)', () => {
       requestedAmount: 15000,
       applicantName: 'Customer Test',
       applicantEmail: userCustomer.email,
-      monthlyIncome: 3500,
+      monthlyIncome: 10000,
     };
 
     const res = await request(app.getHttpServer())
