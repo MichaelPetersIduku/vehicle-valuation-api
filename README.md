@@ -97,14 +97,14 @@ $ npm run migration:run
 
 ## Documentation
 
-This template uses swagger for documentation.
+This project uses swagger for documentation.
 To see swagger, if you are using port 3000 for the api, it would be for example => localhost:3000/docs
 
 ![imagen](https://res.cloudinary.com/dbezwd2bu/image/upload/v1770390890/Screenshot_2026-02-06_at_4.13.08_PM_lsnppk.png)
 
 ## Endpoint security
 
-This template uses jwt tokens and refresh tokens.
+This project uses jwt tokens and refresh tokens.
 
 To make a route public for everyone you have to add the @Public decorator above the endpoint. Example, users.controller.ts / endpoint post, /users.
 
