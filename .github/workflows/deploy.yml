@@ -1,0 +1,231 @@
+name: Deploy to AWS Lambda
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - master
+          - staging
+          - prod
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  deploy:
+    name: Deploy to Lambda
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "stage=prod" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "stage=staging" >> $GITHUB_OUTPUT
+          else
+            echo "stage=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test --if-present
+        env:
+          NODE_ENV: test
+
+      - name: Build application
+        run: npm run build
+
+      - name: Create Lambda handler wrapper
+        run: |
+          cat > dist/lambda.js << 'EOF'
+          const { NestFactory } = require('@nestjs/core');
+          const { AppModule } = require('./src/app.module');
+          const serverless = require('serverless-http');
+
+          let server;
+
+          async function bootstrapApp() {
+            if (!server) {
+              const app = await NestFactory.create(AppModule);
+              server = serverless(await app.init());
+            }
+            return server;
+          }
+
+          module.exports.handler = async (event, context) => {
+            const server = await bootstrapApp();
+            return server(event, context);
+          };
+          EOF
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Install Serverless Framework
+        run: npm install -g serverless
+
+      - name: Deploy to AWS Lambda
+        run: |
+          serverless deploy \
+            --stage ${{ steps.env.outputs.stage }} \
+            --region ${{ secrets.AWS_REGION || 'us-east-1' }} \
+            --verbose
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_TYPE: ${{ secrets.DB_TYPE || 'postgres' }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          RAPID_API_KEY: ${{ secrets.RAPID_API_KEY }}
+          RAPID_API_HOST: ${{ secrets.RAPID_API_HOST }}
+          ENABLE_CORS: true
+          STAGE: ${{ steps.env.outputs.stage }}
+
+      - name: Extract deployment outputs
+        id: deploy-output
+        run: |
+          serverless info --stage ${{ steps.env.outputs.stage }} --region ${{ secrets.AWS_REGION || 'us-east-1' }} > deployment.log
+          cat deployment.log
+
+      - name: Post deployment message
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const log = fs.readFileSync('deployment.log', 'utf8');
+            const environment = '${{ steps.env.outputs.stage }}';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Deployment Successful!**\n\n**Environment**: ${environment}\n\n\`\`\`\n${log}\n\`\`\``
+            }).catch(err => {
+              console.log('Could not comment on PR (not a PR context)');
+            });
+
+      - name: Run smoke tests
+        run: npm run test:e2e --if-present
+        env:
+          API_URL: ${{ steps.deploy-output.outputs.api-endpoint }}
+          NODE_ENV: test
+
+      - name: Send Slack notification
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Lambda Deployment ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Lambda Deployment* - ${{ job.status }}\nEnvironment: ${{ steps.env.outputs.stage }}\nBranch: ${{ github.ref_name }}\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "stage=prod" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "stage=staging" >> $GITHUB_OUTPUT
+          else
+            echo "stage=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Install Serverless Framework
+        run: npm install -g serverless
+
+      - name: Rollback Lambda deployment
+        run: |
+          serverless rollback \
+            --stage ${{ steps.env.outputs.stage }} \
+            --region ${{ secrets.AWS_REGION || 'us-east-1' }} \
+            --verbose
+
+      - name: Send failure notification
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Lambda Deployment Failed & Rolled Back",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Deployment Failed*\nEnvironment: ${{ steps.env.outputs.stage }}\nBranch: ${{ github.ref_name }}\nRollback: SUCCESS"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

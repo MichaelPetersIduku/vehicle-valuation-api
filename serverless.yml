@@ -1,0 +1,123 @@
+service: vehicle-valuation-api
+
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${env:AWS_REGION, 'us-east-1'}
+  stage: ${env:STAGE, 'dev'}
+  architecture: arm64
+  memorySize: 512
+  timeout: 30
+
+  environment:
+    NODE_ENV: ${self:provider.stage}
+    DB_HOST: ${env:DB_HOST}
+    DB_PORT: ${env:DB_PORT}
+    DB_USERNAME: ${env:DB_USERNAME}
+    DB_PASSWORD: ${env:DB_PASSWORD}
+    DB_NAME: ${env:DB_NAME}
+    DB_TYPE: ${env:DB_TYPE, 'postgres'}
+    JWT_SECRET: ${env:JWT_SECRET}
+    JWT_REFRESH_SECRET: ${env:JWT_REFRESH_SECRET}
+    ENABLE_CORS: ${env:ENABLE_CORS, 'true'}
+    PORT: 3000
+    RAPID_API_KEY: ${env:RAPID_API_KEY}
+    RAPID_API_HOST: ${env:RAPID_API_HOST}
+    STAGE: ${self:provider.stage}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource: 'arn:aws:logs:*:*:*'
+        - Effect: Allow
+          Action:
+            - ec2:CreateNetworkInterface
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DeleteNetworkInterface
+          Resource: '*'
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - 'arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:${self:provider.stage}/*'
+        - Effect: Allow
+          Action:
+            - kms:Decrypt
+          Resource: '*'
+
+functions:
+  api:
+    handler: dist/lambda.handler
+    description: NestJS API Handler
+    events:
+      - http:
+          path: /{proxy+}
+          method: ANY
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: true
+      - http:
+          path: /
+          method: ANY
+
+plugins:
+  - serverless-plugin-tracing
+  - serverless-offline
+  - serverless-dynamodb-local
+  - serverless-dotenv-plugin
+
+custom:
+  serverless-offline:
+    httpPort: 3000
+    websocketPort: 3001
+    lambdaPort: 3002
+    httpEvents:
+      - http:
+          path: /{proxy+}
+          method: ANY
+      - http:
+          path: /
+          method: ANY
+
+package:
+  individually: false
+  patterns:
+    - '!node_modules/**'
+    - '!.git/**'
+    - '!.github/**'
+    - '!coverage/**'
+    - '!.env*'
+    - '!README.md'
+
+resources:
+  Resources:
+    ApiGatewayRestApi:
+      Type: AWS::ApiGateway::RestApi
+      Properties:
+        Name: ${self:service}-${self:provider.stage}
+        Description: ${self:service} API Gateway
+        EndpointConfiguration:
+          Types:
+            - REGIONAL
+
+outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}'
+    Export:
+      Name: ${self:service}-${self:provider.stage}-ApiEndpoint
